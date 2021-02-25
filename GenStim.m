@@ -1,31 +1,20 @@
-function [Audio] = GenStim(freq,phase,trial_num,tone_num,dev_type,deviations,dev_tone,fs)
+function [Audio,start_times] = GenStim(freq,phase,trial_num,tone_num,dev_type,deviations,dev_tone,fs)
 
-% First, initialize the tones and the quiet
-% Set a loop to create the tones
-% Have the stims created twice, and play back-to-back
-% Set a loop to create the pattern based on the number of individual tones that you will be hearing ('N' value).
-% Create a deviation, or don't
-% Set the timing of the deviation to .05 seconds
-% In a loop, put all of them together
+% Set a timer to continually update with the times of the different tones
+% Start at 0
+    % Add durations to the timer
+% Add the start times to a separate array
+% If the start time belongs to a deviant, add it to another array
 
-%What's the best way to do this?
-
-% Combine the stimuli into one pattern.
-% Combine the pattern
 
 %%
 
-% if nargin<8
-%     fs = 44100;
-% end
+durTone = 0.40; % duration of TONE stimulus (seconds)
+durDev = 0.20; % duration of the timing deviation
+durQuiet = 0.50;
 
-durStim = 0.40; % duration of TONE stimulus (seconds)
-durTotal = 45.0; %duration of the entire stimulus
-durDev = 0.050; % duration of the timing deviation
-
-tTone = (0:1/fs:durStim)'; % time vector for each individual stim
-tTotal = (0:1/fs:durTotal)'; % time vector for the complete stream
-tDev = (0:1/fs:durDev)'; % time vector for a time deviation
+tTone = (1/fs:1/fs:durTone)'; % time vector for each individual stim
+tDev = (1/fs:1/fs:durDev)'; % time vector for a time deviation
 
 tones = [];
 pauses = [];
@@ -33,15 +22,17 @@ pattern = []; % combination of the three tones [tone, tone, tone]
 Audio = []; % complete audio file [pat, pat, pat, ..., pat]
 freq_tracker = []; %Keeps track of which frequencies are being used
 dev_freqs = [];
+demo_num = 2; % number of demonstration patterns to establish the tones before deviants are introduced
+
+dev_times = [];
 
 %% Generate the tones
 
 for f = 1:(tone_num+1) % Based on the number of tones in the pattern, last tone is the deviant
     
     tone = sin(2*pi*freq(f)*tTone+phase); % Define the tone
-    
     onoffRamp = 0.016; % duration of cosine-squared ramps (seconds)
-    winTone = tukeywin(length(tone),2*onoffRamp/durStim);
+    winTone = tukeywin(length(tone),2*onoffRamp/durTone);
     tone = tone.*winTone; % pure tone stimulus
     
     % Concatenate the tones together into a pattern
@@ -55,17 +46,18 @@ for f = 1:(tone_num+1) % Based on the number of tones in the pattern, last tone 
 end
 %% Combine tones into a pattern
 
-% durPattern = durStim*tone_num+durQuiet; % duration of the pattern (quiet included)
+durPattern = durTone*tone_num+durQuiet; % duration of the pattern (quiet included)
 % tP = (0:1/fs:durPattern)'; % time vector for the pattern
-% 
-% start_times = (0:durPattern:durTotal);
 
 pattern_norm = tones(1,:); % Begin the definition of the pattern by inserting the first tone
+pattern_times = [0];
 
 for ii = 2:tone_num % Add the inter-tone pauses and subsequent tones to the pattern
-    tPause = (0:1/fs:pauses(ii-1)); % time vector for the pause between tones
+    tPause = (1/fs:1/fs:pauses(ii-1)); % time vector for the pause between tones
     Pause = zeros(length(tPause),1)';
     pattern_norm = [pattern_norm,Pause,tones(ii,:)];
+    ToneTime = pattern_times(end)+durTone+pauses(ii-1);
+    pattern_times = [pattern_times,ToneTime];
 end
 
 %% Define deviant patterns
@@ -73,18 +65,23 @@ end
 if dev_type == 1 % for timing deviations:
     
     pattern_dev = tones(1,:); % the tones themselves will remain the same
+    dev_pat_times = 0;
     
     for jj = 2:tone_num % modifies the inter-tone pauses
         
-        if jj ==2
-            tPause = (0:1/fs:(pauses(jj-1)+tDev));    
+        if jj == 2
+            tPause = (1/fs:1/fs:(pauses(jj-1)+durDev));
+            ToneTime = dev_pat_times(end)+durTone+(pauses(jj-1)+durDev);
+        else
+            tPause = (1/fs:1/fs:pauses(jj-1));
+            ToneTime = dev_pat_times(end)+durTone+pauses(jj-1);
         end
         
-        tPause = (0:1/fs:pauses(ii-1)); 
         Pause = zeros(length(tPause),1)';
         pattern_dev = [pattern_dev,Pause,tones(jj,:)];
+        dev_pat_times = [dev_pat_times,ToneTime];
     end
-    
+        
 elseif dev_type == 2 % for frequency deviations:
     
     if dev_tone == 1 %Define the first tone
@@ -94,9 +91,9 @@ elseif dev_type == 2 % for frequency deviations:
         pattern_dev = tones(1,:);
         dev_freqs(1) = freq(1);
     end
-    
+        
     for jj = 2:tone_num
-        tPause = (0:1/fs:(pauses(jj-1)));
+        tPause = (1/fs:1/fs:(pauses(jj-1)));
         Pause = zeros(length(tPause),1)';
         if jj == dev_tone
             pattern_dev = [pattern_dev,Pause,tones(tone_num+1,:)];
@@ -107,10 +104,13 @@ elseif dev_type == 2 % for frequency deviations:
         end        
     end
 end
+
  
 %% Combine patterns into one stimulus
 
-for g = 1:trial_num
+deviations = deviations+demo_num; %This will bump the deviation positions back so that the first two demos will be the normal pattern
+
+for g = 1:trial_num+demo_num
     
     durQuiet = 0.50; % duration of quiet between patterns
     
@@ -119,33 +119,65 @@ for g = 1:trial_num
         tQ = (0:1/fs:durQuiet)'; % time vector for the quiet
         pattern = pattern_dev;
         freq_tracker = [freq_tracker;norm_freqs(1:tone_num)];
-    elseif ismember(g,deviations) && dev_type == 2
+        dev_times = [dev_times];
+        pat_timer = dev_pat_times;
+    elseif ismember(g,deviations) && dev_type == 2 % If this is a frequency deviation
         tQ = (0:1/fs:durQuiet)'; % time vector for the quiet
         pattern = pattern_norm;
         freq_tracker = [freq_tracker;dev_freqs];
+        dev_times = [];
+        pat_timer = pattern_times;
     else % otherwise, combine the tones into a normal pattern
         tQ = (0:1/fs:durQuiet)'; % time vector for the quiet
-        pattern = pattern_dev;
+        pattern = pattern_norm;
         freq_tracker = [freq_tracker;norm_freqs(1:tone_num)];
+        pat_timer = pattern_times;
     end
     
     freq_tracker = [freq_tracker;norm_freqs(1:tone_num)];
-    
     Quiet = zeros(length(tQ),1);
     
     if g == 1 %Add the patterns together
         Audio = pattern;
+        start_times = pattern_times;
     else
         Audio = [Audio, Quiet', pattern];
+        current_pattern_time = start_times(end)+durTone+durQuiet+pat_timer;
+        start_times = [start_times,current_pattern_time];
     end
+   
+    if ismember(g,deviations) % If there is a deviation, add it to the time tracker
+        dev_times = [dev_times,current_pattern_time(dev_tone)];
+    end
+ 
 end
 
-
+start_times(1) = 1/fs;
 %% Normalize signal
 
 % Audio = zeros(size(durStim));
 % Audio(k0:k0+length(tone)-1) = tone; % create TONE vector of same size as NOISE
 
-% Normalize to ±1
+% Normalize to Â±1
 % Audio = Audio/max(max(abs([Audio,NOISE])));
+
+%% Plot signal
+
+time_vec = [1/fs:1/fs:length(Audio)/fs];
+t_locs = round(start_times*44100);
+stim_timer = zeros(1,length(Audio));
+stim_timer(t_locs) = 1;
+
+d_locs = round(dev_times*44100);
+dev_timer = zeros(1,length(Audio));
+dev_timer(d_locs) = 1;
+
+plot(time_vec,Audio,'r')
+hold on
+% plot(time_vec,stim_timer,'k')
+plot(time_vec,dev_timer,'k','LineWidth',2)
+grid on
+grid minor
+
+
 end
