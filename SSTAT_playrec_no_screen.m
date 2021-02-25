@@ -49,38 +49,71 @@ end
 %% Define experimental parameters
 freq_list = [500,750,1000,1250,1500,1750,2000];
 
-siglvl=60;
 N = 3; % number of audio stimuli
-trial_num = 20;
+trial_num = 20; % Number of pattern repetitions
 devs = randperm(trial_num,10); % Define the positions of two deviations
-dev_pos = randi(N);
+dev_pos = randi(N); % Defines which tone will be deviant
 audio_level = 60;
 
-    %% Generate stimulus audio
-    fprintf('Generating stimulus audio...');
-    phase=0;
-    stim_order = randi(7,N,1);
-    
-    freq_dev = randi([1,2]); % Decides whether to increase or lower the frequency of the deviant tone
-    if stim_order(dev_pos) < 2
-        stim_order(N+1) = stim_order(dev_pos)+1;
-    elseif stim_order(dev_pos) == length(freq_list) 
-        stim_order(N+1) = stim_order(dev_pos)-1;        
-    elseif freq_dev == 1
-        stim_order(N+1) = stim_order(dev_pos)+1;
-    elseif freq_dev == 2
-        stim_order(N+1) = stim_order(dev_pos)-1;        
-    end
-    
-    stim_freq = freq_list(stim_order); %Defining which frequencies are used for the tones
-    [xt] = GenStim(stim_freq,phase,trial_num,N,dev_type,devs,dev_pos,fs);
-    amp = db2mag(audio_level-85);  %Need to confirm attenuation levels for the speakers
-    fprintf('DONE\n');
-    
-    %% Experimental trial mock up
-%     [RT] = PresentStim(xt,nt,amp,t0,win,scrY,deviceIndex,tt);
-    
-    STIM = [amp*xt];
-    playrec('play',STIM',1);
+%% Generate stimulus audio
+fprintf('Generating stimulus audio...');
+phase=0;
+stim_order = randi(7,N,1); % Decides which frequencies will be used for the tones (Nx1 frequencies from the list of 7)
 
-    wavwrite('SSTAT_Audio.wav',STIM,fs);
+% Adds an extra item to define the deviant tone if we have a
+% frequency deviation
+% 'If' statements decide whether to increase or lower the frequency of the
+% deviant tone
+
+freq_dev = randi([1,2]);
+if stim_order(dev_pos) < 2 % If it's too early in the list
+    stim_order(N+1) = stim_order(dev_pos)+1; % Moves the frequency farther along the list (higher frequency)
+elseif stim_order(dev_pos) == length(freq_list) % If it's too far in the list
+    stim_order(N+1) = stim_order(dev_pos)-1; % Moves the frequency lower in the list (lower frequency)
+elseif freq_dev == 1
+    stim_order(N+1) = stim_order(dev_pos)+1;
+elseif freq_dev == 2
+    stim_order(N+1) = stim_order(dev_pos)-1;
+end
+
+stim_freq = freq_list(stim_order); %Defining which frequencies are used for the tones
+[xt,t] = GenStim(stim_freq,phase,trial_num,N,dev_type,devs,dev_pos,fs);
+amp = db2mag(audio_level-85);  %Need to confirm attenuation levels for the speakers
+fprintf('DONE\n');
+
+%% Experimental trial mock up
+%     [RT] = PresentStim(xt,nt,amp,t0,win,scrY,deviceIndex,tt);
+
+STIM = [amp*xt];
+playrec('play',STIM',1);
+
+audiowrite('SSTAT_Audio.wav',STIM,fs);
+
+%% Plot the audio
+
+time_vec = [1/fs:1/fs:length(STIM)/fs];
+t_locs = round(t*44100);
+stim_timer = zeros(1,length(STIM));
+stim_timer(t_locs) = 1;
+
+plot(time_vec,xt,'g')
+hold on
+plot(time_vec,stim_timer,'k')
+grid on
+grid minor
+
+%%  Scoring
+
+Screen('FillRect',win,black);
+Screen('Flip',win);
+
+KbQueueRelease(deviceIndex);
+WaitSecs(2);
+ShowCursor;
+ListenChar(0);
+sca;
+
+save(['Results/', todayStr '_' sID '_SRFMData.mat'],'SRFMData');
+
+t=toc;
+fprintf('Experiment complete. Total time elapsed %d min %d sec.\n',floor(t/60),floor(mod(t,60)));
