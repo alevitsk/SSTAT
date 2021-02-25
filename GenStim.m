@@ -145,8 +145,10 @@ for g = 1:trial_num+demo_num
         current_pattern_time = start_times(end)+durTone+durQuiet+pat_timer;
         start_times = [start_times,current_pattern_time];
     end
-   
-    if ismember(g,deviations) % If there is a deviation, add it to the time tracker
+    
+    if ismember(g,deviations) && dev_type == 1
+        dev_times = [dev_times,current_pattern_time(1)];
+    elseif ismember(g,deviations) && dev_type == 2 % If there is a deviation, add it to the time tracker
         dev_times = [dev_times,current_pattern_time(dev_tone)];
     end
  
